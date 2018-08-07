@@ -194,7 +194,7 @@ export default class Reddit {
    * @param text The text (body) of the post.
    * @param options (all optional) Flair ID, flair text, NSFW, send replies to inbox
    */
-  public submit_text_post(
+  public async submit_text_post(
     subreddit: string,
     title: string,
     text: string,
@@ -204,18 +204,35 @@ export default class Reddit {
       nsfw?: boolean;
       sendreplies?: boolean;
     },
-  ): Promise<any> {
-    return this.api_request('/api/submit', {
+  ): Promise<{
+    url: string,
+    drafts_count: number,
+    id: string,
+    name: string,
+    subreddit: string,
+    title: string,
+    text: string,
+  }> {
+    const response = await this.api_request('/api/submit', {
       method: 'POST',
-      kind: 'self',
-      api_type: 'json',
-      extension: 'json',
-      sendreplies: false,
-      sr: subreddit,
-      text,
-      title,
-      ...options,
+      form: {
+        kind: 'self',
+        api_type: 'json',
+        extension: 'json',
+        sendreplies: false,
+        sr: subreddit,
+        text,
+        title,
+        ...options,
+      },
     });
+
+    return {
+      ...response,
+      subreddit,
+      title,
+      text,
+    }
   }
 
   // END ENDPOINTS
@@ -263,7 +280,7 @@ export default class Reddit {
    * @param refresh_token The refresh token to create a session from. Likely in
    *   persistent storage.
    */
-  public async auth(refresh_token: string): Promise<any>;
+  public async auth(refresh_token: string): Promise<this>;
   /**
    * @param options.state The unique state variable in the response. It is not
    *   necessary to check the accuracy of this variable — it is performed
@@ -271,10 +288,10 @@ export default class Reddit {
    * @param options.code The code variable returned in the response.
    */
   // tslint:disable-next-line unified-signatures
-  public async auth(options: { state: string; code: string }): Promise<any>;
+  public async auth(options: { state: string; code: string }): Promise<this>;
   public async auth(
     options: string | { state: string; code: string },
-  ): Promise<any> {
+  ): Promise<this> {
     let form;
 
     // we've been passed a refresh token,
@@ -317,7 +334,8 @@ export default class Reddit {
       if (typeof options === 'string') {
         if (err === 'invalid_request') {
           // token is no longer valid, let's log out
-          return this.logout();
+          this.logout();
+          return this;
         } else {
           // some other error, try again
           this.auth(options);
@@ -341,7 +359,7 @@ export default class Reddit {
       );
     }
 
-    return json;
+    return this;
   }
 
   /**
@@ -396,10 +414,18 @@ export default class Reddit {
       if (get(json, 'error')) {
         throw json.error;
       }
-      if (get(json, 'json.errors')) {
+      if (get(json, 'json.errors.length')) {
         throw json.json.errors;
       }
+      if (get(json, 'success') === false) {
+        throw json;
+      }
+
+      if (get(json, 'json.data')) {
+        json = json.json.data;
+      }
     }
+
     return json;
   }
 }
