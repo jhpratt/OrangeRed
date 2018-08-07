@@ -1,0 +1,28 @@
+{
+  "defaultSeverity": "error",
+  "extends": [
+      "tslint:recommended",
+      "tslint-config-prettier"
+  ],
+  "rules": {
+    "max-line-length": { "options": [100] },
+    "quotemark": { "options": ["single", "avoid-escape"] },
+    "variable-name": [
+      true,
+      "ban-keywords",
+      "check-format",
+      "allow-leading-underscore",
+      "allow-snake-case",
+      "allow-pascal-case"
+    ],
+    "interface-name": false,
+    "arrow-parens": false,
+    "object-literal-sort-keys": false
+  },
+  "linterOptions": {
+    "exclude": [
+      "./dist/**/*",
+      "./node_modules/**/*"
+    ]
+  }
+}
