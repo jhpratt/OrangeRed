@@ -1,3 +1,4 @@
+import once from 'lodash-decorators/once';
 import get from 'lodash.get';
 import merge from 'lodash.merge';
 import pick from 'lodash.pick';
@@ -54,17 +55,88 @@ interface RequestOptions {
  */
 export default class Reddit {
   /**
+   * @param user_agent The user agent to send in the header of each request.
+   *   You should include your app's _name_, _version_, and _your username_.
+   * @param client_id The client ID provided by Reddit, located directly under
+   *   'web app' on [this page](https://www.reddit.com/prefs/apps/).
+   * @param secret The app's secret provided by Reddit, visible after clicking
+   *   'edit' on [this page](https://www.reddit.com/prefs/apps/).
+   * @param redirect_uri The URI to redirect to after authentication (successful
+   *   or failed). This must _exactly_ match the URI located in [your app
+   *   configuration](https://www.reddit.com/prefs/apps/).
+   * @param scopes An array of scopes to be requested. If using TypeScript, the
+   *   available scopes are checked at compile time.
+   * @param permanent Do you want permanent access to this account (`true`), or
+   *   will you ask again in an hour (`false`)? Defaults to permanent.
+   */
+  @once
+  public static configure(
+    user_agent: string,
+    client_id: string,
+    secret: string,
+    redirect_uri: string,
+    scopes: ReadonlyArray<Scope>,
+    permanent = true,
+  ) {
+    Reddit.user_agent = user_agent;
+    Reddit.client_id = client_id;
+    Reddit.secret = secret;
+    Reddit.redirect_uri = redirect_uri;
+    Reddit.scopes = scopes;
+    Reddit.permanent = permanent;
+  }
+
+  /**
+   * The user agent to send in the header of each request.
+   * You should include your app's _name_, _version_, and _your username_.
+   */
+  private static user_agent: string;
+
+  /**
+   * The client ID provided by Reddit, located directly under
+   * 'web app' on [this page](https://www.reddit.com/prefs/apps/).
+   */
+  private static client_id: string;
+
+  /**
+   * The app's secret provided by Reddit, visible after clicking
+   * 'edit' on [this page](https://www.reddit.com/prefs/apps/).
+   */
+  private static secret: string;
+
+  /**
+   * The URI to redirect to after authentication (successful
+   * or failed). This must _exactly_ match the URI located in [your app
+   * configuration](https://www.reddit.com/prefs/apps/).
+   */
+  private static redirect_uri: string;
+
+  /**
+   * An array of scopes to be requested. If using TypeScript, the
+   * available scopes are checked at compile time.
+   */
+  private static scopes: ReadonlyArray<Scope>;
+
+  /**
+   * Do you want permanent access to this account (`true`), or
+   * will you ask again in an hour (`false`)? Defaults to permanent.
+   */
+  private static permanent: boolean;
+
+  /**
    * Rate limit all requests to the specified amount.
    * Burst requests are not available — they are fired upon even intervals.
    */
-  private static queue = new RateLimit('60 per minute');
+  private static readonly queue = new RateLimit('60 per minute');
 
   /**
    * Map of pending authentication states to `NodeJS.Timer` objects.
    * The latter deletes itself and the key after one hour,
    * preventing unauthorized states from being passed.
    */
-  private static pending_auth_states: { [key: string]: NodeJS.Timer } = {};
+  private static readonly pending_auth_states: {
+    [key: string]: NodeJS.Timer;
+  } = {};
 
   /**
    * The refresh token used to get a new bearer token.
@@ -88,30 +160,6 @@ export default class Reddit {
    * It should only be set using the response from an API request.
    */
   private refresh_token_timeout: NodeJS.Timer;
-
-  /**
-   * @param user_agent The user agent to send in the header of each request.
-   *   You should include your app's _name_, _version_, and _your username_.
-   * @param client_id The client ID provided by Reddit, located directly under
-   *   'web app' on [this page](https://www.reddit.com/prefs/apps/).
-   * @param secret The app's secret provided by Reddit, visible after clicking
-   *   'edit' on [this page](https://www.reddit.com/prefs/apps/).
-   * @param redirect_uri The URI to redirect to after authentication (successful
-   *   or failed). This must _exactly_ match the URI located in [your app
-   *   configuration](https://www.reddit.com/prefs/apps/).
-   * @param scopes An array of scopes to be requested. If using TypeScript, the
-   *   available scopes are checked at compile time.
-   * @param permanent Do you want permanent access to this account (`true`), or
-   *   will you ask again in an hour (`false`)? Defaults to permanent.
-   */
-  constructor(
-    private readonly user_agent: string,
-    private readonly client_id: string,
-    private readonly secret: string,
-    private readonly redirect_uri: string,
-    private readonly scopes: ReadonlyArray<Scope>,
-    private readonly permanent = true,
-  ) {}
 
   // BEGIN ENDPOINTS
 
@@ -190,7 +238,7 @@ export default class Reddit {
    *
    * Important note: This value changes upon every request.
    */
-  public get auth_url(): string {
+  public static get auth_url(): string {
     const state = nanoid();
 
     // we only want to allow states that we have knowledge of.
@@ -202,12 +250,12 @@ export default class Reddit {
 
     return (
       `https://ssl.reddit.com/api/v1/authorize` +
-      `?client_id=${this.client_id}` +
+      `?client_id=${Reddit.client_id}` +
       `&response_type=code` +
       `&state=${state}` +
-      `&redirect_uri=${encodeURIComponent(this.redirect_uri)}` +
-      `&duration=${this.permanent ? 'permanent' : 'temporary'}` +
-      `&scope=${this.scopes.join(',')}`
+      `&redirect_uri=${encodeURIComponent(Reddit.redirect_uri)}` +
+      `&duration=${Reddit.permanent ? 'permanent' : 'temporary'}` +
+      `&scope=${Reddit.scopes.join(',')}`
     );
   }
 
@@ -250,7 +298,7 @@ export default class Reddit {
       form = {
         grant_type: 'authorization_code',
         code: options.code,
-        redirect_uri: this.redirect_uri,
+        redirect_uri: Reddit.redirect_uri,
       };
     }
 
@@ -315,7 +363,7 @@ export default class Reddit {
         domain: 'https://oauth.reddit.com',
         method: 'GET',
         headers: {
-          'User-Agent': this.user_agent,
+          'User-Agent': Reddit.user_agent,
         },
       },
       this.bearer_token === undefined
@@ -329,7 +377,7 @@ export default class Reddit {
       req_options.domain !== 'https://www.reddit.com' &&
       !req_options.domain!.startsWith('https://oauth.reddit.com')
     ) {
-      req_options.auth = { user: this.client_id, pass: this.secret };
+      req_options.auth = { user: Reddit.client_id, pass: Reddit.secret };
     }
 
     // this is all we need to do to properly rate limit all requests
