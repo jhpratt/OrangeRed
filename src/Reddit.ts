@@ -235,6 +235,62 @@ export default class Reddit {
     }
   }
 
+  /**
+   * Edit the body text of a comment or self-post.
+   *
+   * [Reddit documentation](https://www.reddit.com/dev/api/oauth#POST_api_editusertext)
+   *
+   * @param id ID of the post/comment to edit.
+   * @param text The text (in markdown) to set.
+   */
+  public edit(id: string, text: string): Promise<any> {
+    return this.api_request('/api/editusertext', {
+      method: 'POST',
+      form: {
+        api_type: 'json',
+        thing_id: id,
+        text,
+      },
+    });
+  }
+
+  /**
+   * Approve a link or comment.
+   *
+   * If the thing was removed, it will be re-inserted into appropriate listings. Any reports on the approved thing will be discarded.
+   *
+   * [Reddit documentation](https://www.reddit.com/dev/api/oauth#POST_api_approve)
+   *
+   * @param id ID of the post/comment to approve.
+   */
+  public approve(id: string): Promise<any> {
+    return this.api_request('/api/approve', {
+      method: 'POST',
+      form: {
+        id,
+      },
+    });
+  }
+
+  /**
+   * Set or unset a post as the sticky in its subreddit.
+   *
+   * [Reddit documentation](https://www.reddit.com/dev/api/oauth#POST_api_set_subreddit_sticky)
+   *
+   * @param id ID of the post to sticky/unsticky.
+   * @param state Indicates whether to sticky or unsticky this post — `true` to sticky, `false` to unsticky.
+   */
+  public set_sticky(id: string, state: boolean = true): Promise<any> {
+    return this.api_request('/api/set_subreddit_sticky', {
+      method: 'POST',
+      form: {
+        api_type: 'json',
+        id,
+        state,
+      },
+    });
+  }
+
   // END ENDPOINTS
 
   /**
