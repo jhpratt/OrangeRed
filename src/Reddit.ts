@@ -1,3 +1,4 @@
+import { EventEmitter } from 'events';
 import once from 'lodash-decorators/once';
 import get from 'lodash.get';
 import merge from 'lodash.merge';
@@ -6,7 +7,6 @@ import nanoid from 'nanoid';
 import { AuthOptions, Headers } from 'request';
 import request from 'request-promise-native';
 import RateLimit from './RateLimit';
-import { EventEmitter } from 'events';
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
@@ -56,6 +56,25 @@ interface RequestOptions {
  */
 export default class Reddit {
   /**
+   * The refresh token used to get a new bearer token.
+   * This should be located in persistent storage,
+   * and passed to `auth()` as the only parameter to fetch a new bearer token.
+   */
+  public get refresh_token() {
+    return this._refresh_token;
+  }
+
+  /**
+   * The URI to send the end user to.
+   * Includes a unique state, the list of scopes, and duration.
+   *
+   * Important note: This value changes upon every request.
+   */
+  public static get auth_url(): string {
+    return Reddit.auth_url_and_state()[0];
+  }
+
+  /**
    * @param user_agent The user agent to send in the header of each request.
    *   You should include your app's _name_, _version_, and _your username_.
    * @param client_id The client ID provided by Reddit, located directly under
@@ -87,9 +106,38 @@ export default class Reddit {
     Reddit.permanent = permanent;
   }
 
+  /**
+   * The URI to send the end user to, along with a unique state.
+   */
+  public static auth_url_and_state(): [string, string] {
+    const state = nanoid();
+
+    // we only want to allow states that we have knowledge of.
+    // must be fulfulled within one hour or it is rejected
+    Reddit.pending_auth_states[state] = setTimeout(() => {
+      delete Reddit.pending_auth_states[state];
+      Reddit.emit('state_expiration', state);
+    }, 3_600_000);
+
+    return [
+      `https://ssl.reddit.com/api/v1/authorize` +
+        `?client_id=${Reddit.client_id}` +
+        `&response_type=code` +
+        `&state=${state}` +
+        `&redirect_uri=${encodeURIComponent(Reddit.redirect_uri)}` +
+        `&duration=${Reddit.permanent ? 'permanent' : 'temporary'}` +
+        `&scope=${Reddit.scopes.join(',')}`,
+      state,
+    ];
+  }
+
+  /**
+   * Let's use an EventEmitter to allow third parties to listen to certain events.
+   * This eliminates the need to have hooks.
+   */
   private static event_emitter = new EventEmitter();
+  public static on = Reddit.event_emitter.on; // tslint:disable-line member-ordering
   private static emit = Reddit.event_emitter.emit;
-  public static on = Reddit.event_emitter.on;
 
   /**
    * The user agent to send in the header of each request.
@@ -142,15 +190,6 @@ export default class Reddit {
   private static readonly pending_auth_states: {
     [key: string]: NodeJS.Timer;
   } = {};
-
-  /**
-   * The refresh token used to get a new bearer token.
-   * This should be located in persistent storage,
-   * and passed to `auth()` as the only parameter to fetch a new bearer token.
-   */
-  public get refresh_token() {
-    return this._refresh_token;
-  }
   private _refresh_token: Option<string>;
 
   /**
@@ -210,13 +249,13 @@ export default class Reddit {
       sendreplies?: boolean;
     },
   ): Promise<{
-    url: string,
-    drafts_count: number,
-    id: string,
-    name: string,
-    subreddit: string,
-    title: string,
-    text: string,
+    url: string;
+    drafts_count: number;
+    id: string;
+    name: string;
+    subreddit: string;
+    title: string;
+    text: string;
   }> {
     const response = await this.api_request('/api/submit', {
       method: 'POST',
@@ -237,7 +276,7 @@ export default class Reddit {
       subreddit,
       title,
       text,
-    }
+    };
   }
 
   /**
@@ -262,7 +301,8 @@ export default class Reddit {
   /**
    * Approve a link or comment.
    *
-   * If the thing was removed, it will be re-inserted into appropriate listings. Any reports on the approved thing will be discarded.
+   * If the thing was removed, it will be re-inserted into appropriate listings.
+   * Any reports on the approved thing will be discarded.
    *
    * [Reddit documentation](https://www.reddit.com/dev/api/oauth#POST_api_approve)
    *
@@ -283,7 +323,8 @@ export default class Reddit {
    * [Reddit documentation](https://www.reddit.com/dev/api/oauth#POST_api_set_subreddit_sticky)
    *
    * @param id ID of the post to sticky/unsticky.
-   * @param state Indicates whether to sticky or unsticky this post — `true` to sticky, `false` to unsticky.
+   * @param state Indicates whether to sticky or unsticky this
+   *   post — `true` to sticky, `false` to unsticky.
    */
   public set_sticky(id: string, state: boolean = true): Promise<any> {
     return this.api_request('/api/set_subreddit_sticky', {
@@ -308,43 +349,6 @@ export default class Reddit {
 
     this.bearer_token = undefined;
     this._refresh_token = undefined;
-  }
-
-  /**
-   * The URI to send the end user to.
-   * Includes a unique state, the list of scopes, and duration.
-   *
-   * Important note: This value changes upon every request.
-   */
-  public static get auth_url(): string {
-    return Reddit.auth_url_and_state()[0];
-  }
-
-  /**
-   * The URI to send the end user to, along with a unique state.
-   */
-  public static auth_url_and_state(): [string, string] {
-    const state = nanoid();
-
-    // we only want to allow states that we have knowledge of.
-    // must be fulfulled within one hour or it is rejected
-    Reddit.pending_auth_states[state] = setTimeout(
-      () => {
-        delete Reddit.pending_auth_states[state];
-        Reddit.emit('state_expiration', state);
-      },
-      3_600_000,
-    );
-
-    return [
-      `https://ssl.reddit.com/api/v1/authorize` +
-      `?client_id=${Reddit.client_id}` +
-      `&response_type=code` +
-      `&state=${state}` +
-      `&redirect_uri=${encodeURIComponent(Reddit.redirect_uri)}` +
-      `&duration=${Reddit.permanent ? 'permanent' : 'temporary'}` +
-      `&scope=${Reddit.scopes.join(',')}`,
-      state];
   }
 
   /**
@@ -379,6 +383,7 @@ export default class Reddit {
       if (Reddit.pending_auth_states.hasOwnProperty(options.state)) {
         clearTimeout(Reddit.pending_auth_states[options.state]);
         delete Reddit.pending_auth_states[options.state];
+        Reddit.emit('state_expiration', options.state);
       } else {
         return Promise.reject('State not found.');
       }
