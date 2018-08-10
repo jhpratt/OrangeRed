@@ -6,6 +6,7 @@ import nanoid from 'nanoid';
 import { AuthOptions, Headers } from 'request';
 import request from 'request-promise-native';
 import RateLimit from './RateLimit';
+import { EventEmitter } from 'events';
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
@@ -85,6 +86,10 @@ export default class Reddit {
     Reddit.scopes = scopes;
     Reddit.permanent = permanent;
   }
+
+  private static event_emitter = new EventEmitter();
+  private static emit = Reddit.event_emitter.emit;
+  public static on = Reddit.event_emitter.on;
 
   /**
    * The user agent to send in the header of each request.
@@ -312,24 +317,34 @@ export default class Reddit {
    * Important note: This value changes upon every request.
    */
   public static get auth_url(): string {
+    return Reddit.auth_url_and_state()[0];
+  }
+
+  /**
+   * The URI to send the end user to, along with a unique state.
+   */
+  public static auth_url_and_state(): [string, string] {
     const state = nanoid();
 
     // we only want to allow states that we have knowledge of.
     // must be fulfulled within one hour or it is rejected
     Reddit.pending_auth_states[state] = setTimeout(
-      () => delete Reddit.pending_auth_states[state],
-      3_600,
+      () => {
+        delete Reddit.pending_auth_states[state];
+        Reddit.emit('state_expiration', state);
+      },
+      3_600_000,
     );
 
-    return (
+    return [
       `https://ssl.reddit.com/api/v1/authorize` +
       `?client_id=${Reddit.client_id}` +
       `&response_type=code` +
       `&state=${state}` +
       `&redirect_uri=${encodeURIComponent(Reddit.redirect_uri)}` +
       `&duration=${Reddit.permanent ? 'permanent' : 'temporary'}` +
-      `&scope=${Reddit.scopes.join(',')}`
-    );
+      `&scope=${Reddit.scopes.join(',')}`,
+      state];
   }
 
   /**

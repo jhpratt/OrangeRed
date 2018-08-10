@@ -1,6 +1,6 @@
 {
   "name": "orangered",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "main": "dist/Reddit.js",
   "repository": "https://github.com/r-spacex/OrangeRed",
   "author": "Jacob Pratt",
