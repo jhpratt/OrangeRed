@@ -179,8 +179,12 @@ export default class Reddit {
   /**
    * Rate limit all requests to the specified amount.
    * Burst requests are not available — they are fired upon even intervals.
+   *
+   * A former admin has clarified that the rate limit is per authenticated user,
+   * not per app.
    */
-  private static readonly queue = new RateLimit('60 per minute');
+  private static readonly queue: { [key: string]: RateLimit } = {};
+  private static readonly no_auth_queue = new RateLimit('60 per second');
 
   /**
    * Map of pending authentication states to `NodeJS.Timer` objects.
@@ -475,7 +479,18 @@ export default class Reddit {
     }
 
     // this is all we need to do to properly rate limit all requests
-    await new Promise(resolve => Reddit.queue.push(resolve));
+    if (
+      this.refresh_token !== undefined &&
+      Reddit.queue.hasOwnProperty(this.refresh_token)
+    ) {
+      await new Promise(resolve =>
+        Reddit.queue[this.refresh_token!].push(resolve),
+      );
+    } else if (this.refresh_token === undefined) {
+      await new Promise(resolve => Reddit.no_auth_queue.push(resolve));
+    } else {
+      Reddit.queue[this.refresh_token] = new RateLimit('60 per minute');
+    }
 
     // make the request using the appropriate options
     let json = await request({

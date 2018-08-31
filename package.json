@@ -1,6 +1,6 @@
 {
   "name": "orangered",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "main": "dist/Reddit.js",
   "repository": "https://github.com/r-spacex/OrangeRed",
   "author": "Jacob Pratt",
@@ -27,7 +27,7 @@
     "typescript": "^3.0.1"
   },
   "scripts": {
-    "fmt": "prettier --write \"src/**/*.ts\" \"**/*.md\" && tslint --fix -p \".\" \"src/**/*\"",
+    "fmt": "tslint --fix -p . src/**/* && prettier --write src/**/*.ts **/*.md",
     "build": "tsc",
     "watch": "tsc -w",
     "clean": "rm -rf dist"
