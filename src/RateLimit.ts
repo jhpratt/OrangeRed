@@ -42,7 +42,7 @@ export default class RateLimit {
         throw new Error('Invalid duration');
     }
 
-    this.delay_ms = interval_ms / per_interval / limit_after_percent;
+    this.delay_ms = interval_ms / per_interval / (1 - limit_after_percent);
 
     this.requests_allowed = per_interval;
     setInterval(() => (this.requests_made = 0), interval_ms);
