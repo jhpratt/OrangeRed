@@ -1,8 +1,4 @@
 import { EventEmitter } from 'events';
-import once from 'lodash-decorators/once';
-import get from 'lodash.get';
-import merge from 'lodash.merge';
-import pick from 'lodash.pick';
 import nanoid from 'nanoid';
 import { AuthOptions, Headers } from 'request';
 import request from 'request-promise-native';
@@ -89,7 +85,6 @@ export default class Reddit {
    * @param permanent Do you want permanent access to this account (`true`), or
    *   will you ask again in an hour (`false`)? Defaults to permanent.
    */
-  @once
   public static configure(
     user_agent: string,
     client_id: string,
@@ -98,6 +93,11 @@ export default class Reddit {
     scopes: ReadonlyArray<Scope>,
     permanent = true,
   ) {
+    if (Reddit.config_called) {
+      return;
+    }
+    Reddit.config_called = true;
+
     Reddit.user_agent = user_agent;
     Reddit.client_id = client_id;
     Reddit.secret = secret;
@@ -175,6 +175,11 @@ export default class Reddit {
    * will you ask again in an hour (`false`)? Defaults to permanent.
    */
   private static permanent: boolean;
+
+  /**
+   * Has `Reddit.config()` been called yet?
+   */
+  private static config_called = false;
 
   /**
    * Rate limit all requests to the specified amount.
@@ -448,27 +453,32 @@ export default class Reddit {
    * @param parse_options Any options used when parsing the response. Currently
    *   only the key `json`, which will automatically run the body through
    *   `JSON.parse` if `true`.
-   * @param _req_options Any options passed onto the request. Will be merged
+   * @param req_options Any options passed onto the request. Will be merged
    *   with defaults.
    */
   private async api_request(
     endpoint: string,
-    _req_options: RequestOptions = {},
+    req_options: RequestOptions = {},
     parse_options: { json?: boolean } = { json: true },
   ): Promise<any> {
-    const req_options: RequestOptions = merge(
-      {
-        domain: 'https://oauth.reddit.com',
-        method: 'GET',
-        headers: {
-          'User-Agent': Reddit.user_agent,
-        },
-      },
-      this.bearer_token === undefined
-        ? {}
-        : { headers: { Authorization: `bearer ${this.bearer_token}` } },
-      _req_options,
-    );
+    if (req_options.domain === undefined) {
+      req_options.domain = 'https://oauth.reddit.com';
+    }
+    if (req_options.method === undefined) {
+      req_options.method = 'GET';
+    }
+    if (req_options.headers === undefined) {
+      req_options.headers = {};
+    }
+    if (req_options.headers['User-Agent'] === undefined) {
+      req_options.headers['User-Agent'] = Reddit.user_agent;
+    }
+    if (
+      this.bearer_token !== undefined &&
+      req_options.headers.Authorization === undefined
+    ) {
+      req_options.headers.Authorization = `bearer ${this.bearer_token}`;
+    }
 
     // automatically add authentication where necessary
     if (
@@ -495,24 +505,39 @@ export default class Reddit {
     // make the request using the appropriate options
     let json = await request({
       uri: `${req_options.domain}${endpoint}`,
-      ...pick(req_options, ['method', 'form', 'qs', 'headers', 'auth']),
+      method: req_options.method,
+      form: req_options.form,
+      qs: req_options.qs,
+      headers: req_options.headers,
+      auth: req_options.auth,
     });
 
     // parse the JSON if requested, throwing errors as appropriate
-    if (parse_options.json) {
+    if (parse_options.json === true) {
       json = JSON.parse(json);
 
-      if (get(json, 'error')) {
+      if (json !== undefined && json.error !== undefined) {
         throw json.error;
       }
-      if (get(json, 'json.errors.length')) {
+
+      if (
+        json !== undefined &&
+        json.json !== undefined &&
+        json.json.errors !== undefined &&
+        json.json.errors.length !== 0
+      ) {
         throw json.json.errors;
       }
-      if (get(json, 'success') === false) {
+
+      if (json !== undefined && json.success === false) {
         throw json;
       }
 
-      if (get(json, 'json.data')) {
+      if (
+        json !== undefined &&
+        json.json !== undefined &&
+        json.json.data !== undefined
+      ) {
         json = json.json.data;
       }
     }
